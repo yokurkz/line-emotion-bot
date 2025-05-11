@@ -16,27 +16,27 @@ parser = WebhookParser(os.environ["LINE_CHANNEL_SECRET"])
 user_sessions = {}
 MAX_TURNS = 3
 
-def pick_topic_by_category(category, used):
+def choose_topic_exclusive(category, used):
     options = list(set(TOPIC_CATEGORIES[category]) - set(used))
     return random.choice(options) if options else None
 
-def generate_topic_choices(used):
-    choices = {}
-    for cat in ["positive", "negative", "neutral"]:
-        picked = pick_topic_by_category(cat, used)
-        if picked:
-            choices[cat] = picked
-    return choices
+def generate_topic_set(used):
+    return {
+        "A": choose_topic_exclusive("positive", used),
+        "B": choose_topic_exclusive("negative", used),
+        "C": choose_topic_exclusive("neutral", used)
+    }
 
-def build_category_menu(topics_by_category):
+def build_topic_menu(topic_set):
     actions = []
-    for cat, topic in topics_by_category.items():
-        actions.append(PostbackAction(label=cat.capitalize(), data=topic))
+    for label, topic in topic_set.items():
+        if topic:
+            actions.append(PostbackAction(label=topic, data=topic))
     actions.append(PostbackAction(label="他の話題", data="reshuffle"))
     return TemplateSendMessage(
-        alt_text="トピックカテゴリ選択",
+        alt_text="トピック選択",
         template=ButtonsTemplate(
-            text="次から選んでね！「終わり」と送ると日記が終了します。",
+            text="次の中から話題を選んでね。「終わり」と送れば日記を終了できます。",
             actions=actions
         )
     )
@@ -56,10 +56,10 @@ async def handle_line_event(body: str, signature: str):
                     "topic_history": {},
                     "turn": 0
                 }
-                greeting = "📝 今日を一緒に振り返ろう！\n・ポジティブ／ネガティブ／中立から話題を選んで3回ほど会話します。\n・「終わり」と送ればいつでも終了できます。"
                 session = user_sessions[user_id]
-                session["topics_by_category"] = generate_topic_choices(session["used_topics"])
-                menu = build_category_menu(session["topics_by_category"])
+                session["current_choices"] = generate_topic_set(session["used_topics"])
+                menu = build_topic_menu(session["current_choices"])
+                greeting = "📝 今日を一緒に振り返ろう！\nA〜Cから1つ選んでね。「他の話題」で別のセットが出るよ。"
                 line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=greeting), menu])
 
             elif msg == "終わり":
@@ -69,7 +69,7 @@ async def handle_line_event(body: str, signature: str):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
                     del user_sessions[user_id]
                 else:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="まだ日記を始めていないみたい。まずは「書く」と送ってね。"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="まずは「書く」と送ってね。"))
 
             elif user_id in user_sessions:
                 session = user_sessions[user_id]
@@ -86,16 +86,16 @@ async def handle_line_event(body: str, signature: str):
                         session["topic_history"][session["current_topic"]].append({"role": "assistant", "content": followup_q})
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=followup_q))
                     else:
-                        thanks = f"ありがとう！「{session['current_topic']}」の話はここまでにしよう。次の話題を選んでみようか！"
+                        thanks = f"ありがとう！「{session['current_topic']}」の話はこれでおしまい。次の話題を選ぼう！"
                         session["used_topics"].append(session["current_topic"])
                         session["current_topic"] = None
                         session["turn"] = 0
-                        session["topics_by_category"] = generate_topic_choices(session["used_topics"])
-                        menu = build_category_menu(session["topics_by_category"])
+                        session["current_choices"] = generate_topic_set(session["used_topics"])
+                        menu = build_topic_menu(session["current_choices"])
                         line_bot_api.reply_message(event.reply_token, [TextSendMessage(text=thanks), menu])
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(
-                    text="📒 このBotは日記を手伝います。「書く」と送るとスタートします。"
+                    text="📒 このBotは日記を手伝います。「書く」と送ってね。"
                 ))
 
         elif hasattr(event, 'postback'):
@@ -105,8 +105,8 @@ async def handle_line_event(body: str, signature: str):
             if not session:
                 return
             if data == "reshuffle":
-                session["topics_by_category"] = generate_topic_choices(session["used_topics"])
-                menu = build_category_menu(session["topics_by_category"])
+                session["current_choices"] = generate_topic_set(session["used_topics"])
+                menu = build_topic_menu(session["current_choices"])
                 line_bot_api.reply_message(event.reply_token, menu)
             else:
                 session["current_topic"] = data
