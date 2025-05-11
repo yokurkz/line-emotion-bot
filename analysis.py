@@ -4,17 +4,28 @@ import os
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 def analyze_and_summarize(topic_histories):
-    prompt = "以下はユーザーとBotによる日記的な会話ログです。各トピックごとに次の形式でまとめてください：\n" +              "1. トピック名\n2. 要約（1行）\n3. 感情（ポジティブ／ネガティブ／ニュートラル）\n4. コメント（やさしい一言）\n\n"
-
+    full_text = ""
     for topic, log in topic_histories.items():
-        prompt += f"【{topic}】\n"
+        full_text += f"【{topic}】\n"
         for entry in log:
             role = "ユーザー" if entry["role"] == "user" else "Bot"
-            prompt += f"{role}: {entry['content']}\n"
-        prompt += "\n"
+            full_text += f"{role}: {entry['content']}\n"
+        full_text += "\n"
+
+    prompt = f"""
+以下はユーザーとの3つの話題に関する会話です。
+全体を通して、以下を日本語で出力してください：
+
+1. 今日一日の要約（3〜5文程度）
+2. ユーザーの総合的な感情傾向（ポジティブ／ネガティブ／混在／ニュートラル）
+3. 有益なフィードバック（振り返りを深めるコメントや励まし）
+
+[会話ログ]
+{full_text}
+"""
 
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7
     )
@@ -32,7 +43,7 @@ def generate_followup_question(topic, history):
 {dialogue}
 """
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.8
     )
