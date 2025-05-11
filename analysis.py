@@ -24,7 +24,7 @@ def analyze_and_summarize(topics, logs):
     return response["choices"][0]["message"]["content"]
 
 def generate_followup_question(prev_user_message):
-    prompt = f"ユーザーの発言「{prev_user_message}」に続けて、さらに深掘りする質問を1つ、やさしい日本語で考えてください。"
+    prompt = f"ユーザーの発言「{prev_user_message}」をもとに、今日の出来事にフォーカスして深掘りする質問を1つ考えてください。やさしい日本語で。"
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],

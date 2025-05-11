@@ -25,7 +25,7 @@ def generate_topic_template(used_topics):
     actions.append(PostbackAction(label="記入を終える", data="finish"))
 
     template = ButtonsTemplate(
-        text="次に話したいトピックを選んでね！",
+        text="今日を振り返って、どの話題から書いてみようか？",
         actions=actions
     )
     return TemplateSendMessage(alt_text="トピック選択", template=template)
@@ -45,8 +45,14 @@ async def handle_line_event(body: str, signature: str):
                     "turn": 0,
                     "topics_done": 0
                 }
+                greeting = "📝 今日を一緒に振り返ろう！
+・3つの話題を選んで、各話題で3回くらいおしゃべりします。
+・途中で「記入を終える」も選べるから、気楽にね。"
                 tmpl = generate_topic_template([])
-                line_bot_api.reply_message(event.reply_token, tmpl)
+                line_bot_api.reply_message(event.reply_token, [
+                    TextSendMessage(text=greeting),
+                    tmpl
+                ])
 
             elif user_id in user_sessions:
                 session = user_sessions[user_id]
@@ -71,6 +77,14 @@ async def handle_line_event(body: str, signature: str):
                         else:
                             tmpl = generate_topic_template(session["used_topics"])
                             line_bot_api.reply_message(event.reply_token, tmpl)
+            else:
+                # セッションが始まっていないときの入力は説明を返す
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(
+                    text="📒 このBotは1日のふり返り日記をお手伝いします。
+
+始めるには「書く」と送ってください。"
+                ))
+
         elif hasattr(event, 'postback'):
             user_id = event.source.user_id
             data = event.postback.data
@@ -83,6 +97,6 @@ async def handle_line_event(body: str, signature: str):
                 del user_sessions[user_id]
             else:
                 session["current_topic"] = data
-                opening = f"{data}について、どんなことがあった？"
+                opening = f"今日の「{data}」について、どんなことがあった？"
                 session["topic_logs"].append({"role": "assistant", "content": opening})
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=opening))
