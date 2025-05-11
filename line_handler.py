@@ -23,12 +23,13 @@ def generate_topic_template(used_topics):
     choices = random.sample(available, min(3, len(available)))
     actions = [PostbackAction(label=topic, data=topic) for topic in choices]
     actions.append(PostbackAction(label="記入を終える", data="finish"))
-
-    template = ButtonsTemplate(
-        text="今日を振り返って、どの話題から書いてみようか？",
-        actions=actions
+    return TemplateSendMessage(
+        alt_text="トピック選択",
+        template=ButtonsTemplate(
+            text="今日を振り返って、どの話題から書いてみようか？",
+            actions=actions
+        )
     )
-    return TemplateSendMessage(alt_text="トピック選択", template=template)
 
 async def handle_line_event(body: str, signature: str):
     events = parser.parse(body, signature)
@@ -42,6 +43,7 @@ async def handle_line_event(body: str, signature: str):
                     "used_topics": [],
                     "current_topic": None,
                     "topic_logs": [],
+                    "topic_history": {},
                     "turn": 0,
                     "topics_done": 0
                 }
@@ -60,10 +62,15 @@ async def handle_line_event(body: str, signature: str):
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="トピックを選んでね！"))
                 else:
                     session["topic_logs"].append({"role": "user", "content": msg})
+                    session["topic_history"][session["current_topic"]].append({"role": "user", "content": msg})
                     session["turn"] += 1
                     if session["turn"] < MAX_TURNS:
-                        followup_q = generate_followup_question(msg)
+                        followup_q = generate_followup_question(
+                            session["current_topic"],
+                            session["topic_history"][session["current_topic"]]
+                        )
                         session["topic_logs"].append({"role": "assistant", "content": followup_q})
+                        session["topic_history"][session["current_topic"]].append({"role": "assistant", "content": followup_q})
                         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=followup_q))
                     else:
                         session["used_topics"].append(session["current_topic"])
@@ -71,14 +78,13 @@ async def handle_line_event(body: str, signature: str):
                         session["current_topic"] = None
                         session["turn"] = 0
                         if session["topics_done"] >= MAX_TOPICS:
-                            result = analyze_and_summarize(session["used_topics"], session["topic_logs"])
+                            result = analyze_and_summarize(session["topic_history"])
                             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
                             del user_sessions[user_id]
                         else:
                             tmpl = generate_topic_template(session["used_topics"])
                             line_bot_api.reply_message(event.reply_token, tmpl)
             else:
-                # セッションが始まっていないときの入力は説明を返す
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(
                     text="📒 このBotは1日のふり返り日記をお手伝いします。
 
@@ -92,11 +98,13 @@ async def handle_line_event(body: str, signature: str):
             if not session:
                 return
             if data == "finish":
-                result = analyze_and_summarize(session["used_topics"], session["topic_logs"])
+                result = analyze_and_summarize(session["topic_history"])
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
                 del user_sessions[user_id]
             else:
                 session["current_topic"] = data
-                opening = f"今日の「{data}」について、どんなことがあった？"
-                session["topic_logs"].append({"role": "assistant", "content": opening})
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=opening))
+                session["topic_logs"].append({"role": "assistant", "content": f"今日の「{data}」について、どんなことがあった？"})
+                session["topic_history"][data] = [
+                    {"role": "assistant", "content": f"今日の「{data}」について、どんなことがあった？"}
+                ]
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"今日の「{data}」について、どんなことがあった？"))
